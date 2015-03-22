@@ -1,0 +1,102 @@
+---
+title: "Project - human activity recognition"
+
+output: html_document
+---
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+
+###Loading and reading of Data
+
+The data is downloaded from the given url and read into the variables `trainingRaw` and `testingRaw`. Observations that contain "NA", "#DIV/0!" and empty "" strings are considered as NA- values.  
+
+
+```{r}
+setwd("~/Dropbox/08_machine_learning/pa/")
+
+trainUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+
+if(!file.exists("pml-training.csv")){
+  download.file(trainUrl,"pml-training.csv",method="curl")
+  }
+trainingRaw<-read.csv("pml-training.csv",na.strings=c("NA","#DIV/0!", "") )
+
+if(!file.exists("pml-testing.csv")){
+  download.file(testUrl,"pml-testing.csv",method="curl")
+  }
+testingRaw<-read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!", "") )
+```
+
+```{r, message=FALSE}
+library(caret);library(randomForest);library(rpart);library(rpart.plot);library(rattle)
+set.seed(3777)
+```
+
+### Data Cleaning
+I remove columns that only contain NA-values and columns that consist of values with nearZeroVariance. The nearZeroVariance function identifies variables that contain only a few unique values compared to the samples size. The ratio of the frequency of the most common value to the frequency of the second most common value is large. These values therefore provide no significant information.
+The cleaned data is stored in the variables `trainingSet` `testingSet`
+
+```{r}
+trainingSet<-trainingRaw[,colSums(is.na(trainingRaw)) == 0]
+nzv<-which(nearZeroVar(trainingSet, saveMetrics=TRUE)$nzv)
+trainingSet<-trainingSet[,-c(nzv)]
+trainingSet<-trainingSet[,-c(1:6)]
+testingSet<-testingRaw[,colSums(is.na(testingRaw)) == 0]
+nzv<-which(nearZeroVar(testingSet, saveMetrics=TRUE)$nzv)
+testingSet<-testingSet[,-c(nzv)]
+testingSet<-testingSet[,-c(1:6)]
+rm(nzv)
+```
+
+###Partitioning of the training datat set
+
+The original trainingSet is splitted into a `myTraining` and `myTesting` with a ratio of 60/40. These variables are used to establish and validate the models.
+
+```{r}
+inTrain<-createDataPartition(y=trainingSet$classe,
+                             p=0.6, list=FALSE)
+myTraining<-trainingSet[inTrain,];myTesting<-trainingSet[-inTrain,]
+```
+
+###Model prediction by means of Decision Tree Model
+
+The goal of the project is to predict the manner in which the exercise are done. This is represented by the "classe" variable in the training set. The sensor variables are used to predict this outcome variable `classe`
+ 
+```{r}
+str(myTraining$classe)
+```
+
+As `classe` is a factor variable with the levels (A,B,C,D,E) the predicted outcome is a qualitative classification. I applied  a decision tree and a random forest model to predict the classification of the training. For both model types all features (after cleaning step) of the training data are used. 
+
+```{r}
+modelFit1 <- rpart(classe ~ ., data=myTraining, method="class")
+fancyRpartPlot(modelFit1)
+```
+
+```{r}
+predictions1 <- predict(modelFit1, myTesting, type = "class")
+confusionMatrix(predictions1, myTesting$classe)
+```
+
+###Model prediction by means of Random Forest Model
+
+```{r}
+modelFit2 <- randomForest(classe ~. , data=myTraining)
+```
+
+```{r}
+predictions2 <- predict(modelFit2, myTesting, type = "class")
+confusionMatrix(predictions2, myTesting$classe)
+```
+
+###Results
+
+From the two confusion matrices, we can see that the *random forest model* performed better than the decision tree model. The predicting  accuracy for the `myTesting` data set is 0.995 for the random forest model and 0.733 for the decision tree model.
+An expected out-of-sample error of 0.5% is estimated for the random forest model.
+
+Thus, the *random forest model* is applied for the analysis of 20 cases of the testingSet.
